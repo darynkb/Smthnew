@@ -173,7 +173,7 @@ void loop(){
     HTTPClient http;
 
     // Send request
-    http.begin(client, ip); //"http://192.168.73.200:8090/api/v1/post2" address
+    http.begin(client, ip); //"http://192.168.73.200:8090/api/v1/post2" address can be changed later
     http.addHeader("Content-Type","application/json");
     http.POST(json);
 
