@@ -39,9 +39,11 @@ char *wifiName;
 char *wifiPass;
 int id;
 String ip;
-boolean didReadConfig = false;
 boolean readConfiguration();
 char *endRoute = "/api/v1/post2";
+
+String dataCreation();
+boolean didReadConfig = false;
 
 void setup()
 {
@@ -49,53 +51,19 @@ void setup()
   lcd.init(); // Iniciamos el LCD
   lcd.backlight(); 
   lcd.setCursor(0,1);
-  Serial.print("Initializing");
+  Serial.print("Initializing SD");
   dht.begin();
-  if (!SD.begin(CS_PIN)) {
-    Serial.println("error");
-    return;
-  }
-  Serial.println("Initialized");
+  sdInit();
   Serial.begin(115200);                            //Serial connection
 
   didReadConfig = readConfiguration();
-//  sprintf(ip, "%s%s", ip, "/api/v1/post2");
-  //String newIp = strcat(ip, endRoute);
   ip += "/api/v1/post";
   ip += "\0";
 
-//  ip.is<const char*>(); //  false
-//  ip.is<String>(); //  false
-//  ip.is<int>(); //  true
-//  ip.is<JsonObject&>(); //  false
-
-//  Serial.print(F("id = "));
-//  Serial.println(id);
-//
-//  Serial.print(F("wifi = "));
-//  Serial.println(str1);
-//
-//  Serial.print(F("password = "));
-//  Serial.println(str2);
-//  
-  Serial.print(F("IP = "));
-  Serial.println(ip);
-//  Serial.print(F("NEWIP = "));
-//  Serial.println(newIp);
-
-//  if( typeof(ip) == String ) {
-//    printf("IP is of type string!");
-//  }
+//  Serial.print(F("IP = "));
+//  Serial.println(ip);
   
-  WiFi.begin(wifiName, wifiPass);   //WiFi connection  "iPhone dora"  "PAVLODAR14"
- 
-  while (WiFi.status() != WL_CONNECTED) {  //Wait for the WiFI connection completion
- 
-    delay(500);
-    Serial.println("Waiting for connection");
- 
-  }
-  Serial.println("connected");
+  wifiInit();
  
 }
 
@@ -115,81 +83,29 @@ void loop(){
   lcd.print(t);
   lcd.setCursor(11,1);
   lcd.print(h);
-  String dataString = "";
-  dateTime = NTPch.getNTPtime(6, 1);
-  if(dateTime.valid){
-    byte actualHour = dateTime.hour;
-    byte actualMinute = dateTime.minute;
-    int actualyear = dateTime.year;
-    byte actualMonth = dateTime.month;
-    byte actualday =dateTime.day;
-    dataString += String(actualday);
-    dataString += "/";
-    dataString += String(actualMonth);
-    dataString += "/";
-    dataString += String(actualyear);
-    dataString += "  ";
-    dataString += String(actualHour);
-    dataString += ":";
-    dataString += String(actualMinute);
-    dataString += " Температура:";
-    dataString += String(t);
-    dataString += " Влажность:";
-    dataString += String(h);
-    dataString += "\r\n";
-  }
+
+  String dataString = dataCreation(t, h);
   Serial.print(dataString);
-  File humTemp = SD.open("humTemp.txt", FILE_WRITE);
-  if (humTemp) {
-    Serial.println("Success");
-      humTemp.println(dataString);
-      humTemp.close();
-  }
-  else {
-    Serial.println("couldn't do it my man");
-  }
+  
+  sdWriting(dataString);
 
   sumH=sumH+h;
   sumT=sumT+t;
   avgH=sumH/i;
   avgT=sumT/i;
   i++;
+  Serial.print("Hum:  ");
   Serial.println(avgH);
+  Serial.print("Temp: ");
   Serial.println(avgT);
   saveAvg();
 
-  
-  if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
- 
-    DynamicJsonDocument doc(2048);
-    doc["hum"] = h;
-    doc["temp"] = t;
-
-    // Serialize JSON document
-    String json;
-    serializeJson(doc, json);
-
-    WiFiClient client;  // or WiFiClientSecure for HTTPS
-    HTTPClient http;
-
-    // Send request
-    http.begin(client, ip); //"http://192.168.73.200:8090/api/v1/post2" address can be changed later
-    http.addHeader("Content-Type","application/json");
-    http.POST(json);
-
-// Read response
-    Serial.print(http.getString());
-
-// Disconnect
-    http.end();
-   } else {
- 
-    Serial.println("Error in WiFi connection");
- 
-  }
+  sendingToServer(h, t);
   
   delay(3000);
 }
+
+
 void saveAvg(){
   if(SD.exists("tAvg.txt")){
     SD.remove("tAvg.txt");
@@ -200,7 +116,7 @@ void saveAvg(){
   
   File avgTf= SD.open("tAvg.txt", FILE_WRITE);
   if (avgTf) {
-    Serial.println("Success");
+    Serial.println("Successfully saved T in SD");
       avgTf.println(avgT);
       avgTf.close();
   }
@@ -211,7 +127,7 @@ void saveAvg(){
   
   File avgHf = SD.open("hAvg.txt", FILE_WRITE);
   if (avgHf) {
-    Serial.println("Success");
+    Serial.println("Successfully saved H in SD");
       avgHf.println(avgH);
       avgHf.close();
   }
@@ -257,4 +173,96 @@ boolean readConfiguration() {
   cfg.end();
   
   return true;
+}
+
+
+String dataCreation(int t, int h) {
+  String dataString = "";
+  dateTime = NTPch.getNTPtime(6, 1);
+  if(dateTime.valid){
+    byte actualHour = dateTime.hour;
+    byte actualMinute = dateTime.minute;
+    int actualyear = dateTime.year;
+    byte actualMonth = dateTime.month;
+    byte actualday =dateTime.day;
+    dataString += String(actualday);
+    dataString += "/";
+    dataString += String(actualMonth);
+    dataString += "/";
+    dataString += String(actualyear);
+    dataString += "  ";
+    dataString += String(actualHour);
+    dataString += ":";
+    dataString += String(actualMinute);
+    dataString += " Температура:";
+    dataString += String(t);
+    dataString += " Влажность:";
+    dataString += String(h);
+    dataString += "\r\n";
+  }
+
+  return dataString;
+}
+
+void sdWriting(String dataString) {
+  File humTemp = SD.open("humTemp.txt", FILE_WRITE);
+  if (humTemp) {
+    Serial.println("Successfully opened SD");
+      humTemp.println(dataString);
+      humTemp.close();
+  }
+  else {
+    Serial.println("couldn't do it my man. Error in opening SD");
+  }
+}
+
+void sendingToServer(int h, int t) {
+  if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
+ 
+    DynamicJsonDocument doc(2048);
+    doc["hum"] = h;
+    doc["temp"] = t;
+
+    // Serialize JSON document
+    String json;
+    serializeJson(doc, json);
+
+    WiFiClient client;  // or WiFiClientSecure for HTTPS
+    HTTPClient http;
+
+    // Send request
+    http.begin(client, ip); //"http://192.168.73.200:8090/api/v1/post2" address can be changed later
+    http.addHeader("Content-Type","application/json");
+    http.POST(json);
+
+// Read response
+    Serial.print(http.getString());
+
+// Disconnect
+    http.end();
+  } else {
+ 
+    Serial.println("Error in WiFi connection");
+ 
+  }
+}
+
+void sdInit() {
+  if (!SD.begin(CS_PIN)) {
+    Serial.println("error with SD");
+    return;
+  }
+  Serial.println("SD Initialized");
+}
+
+void wifiInit() {
+  WiFi.begin(wifiName, wifiPass);   //WiFi connection  "iPhone dora"  "PAVLODAR14"
+ 
+  while (WiFi.status() != WL_CONNECTED) {  //Wait for the WiFI connection completion
+ 
+    delay(500);
+    Serial.println("Waiting for connection");
+ 
+  }
+  Serial.println("Wifi connected");
 }
