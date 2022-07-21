@@ -45,6 +45,8 @@ char *endRoute = "/api/v1/post2";
 String dataCreation();
 boolean didReadConfig = false;
 
+
+
 void setup()
 {
   Wire.begin(D2, D1); // D1 = SCL | D2 = SDA
@@ -69,6 +71,7 @@ void setup()
 
 
 void loop(){
+  Serial.println(">BEGIN");
   float h = dht.readHumidity();
   float t = dht.readTemperature();
 //  Serial.print("Hum");
@@ -84,7 +87,10 @@ void loop(){
   lcd.setCursor(11,1);
   lcd.print(h);
 
+  
+  
   String dataString = dataCreation(t, h);
+  Serial.print("From dataCreation: ");
   Serial.print(dataString);
   
   sdWriting(dataString);
@@ -100,8 +106,11 @@ void loop(){
   Serial.println(avgT);
   saveAvg();
 
-  sendingToServer(h, t);
-  
+  String serverData = serverDataCreation(t, h);
+  sendingToServer(h, t, serverData);
+
+  Serial.println(">END");
+  Serial.println(" ");
   delay(3000);
 }
 
@@ -121,7 +130,7 @@ void saveAvg(){
       avgTf.close();
   }
   else {
-    Serial.println("couldn't do it my man");
+    Serial.println("couldn't saved T in SD");
   }
 
   
@@ -132,7 +141,7 @@ void saveAvg(){
       avgHf.close();
   }
   else {
-    Serial.println("couldn't do it my man");
+    Serial.println("couldn't saved H in SD");
   }
 
  
@@ -178,21 +187,35 @@ boolean readConfiguration() {
 
 String dataCreation(int t, int h) {
   String dataString = "";
-  dateTime = NTPch.getNTPtime(6, 1);
+  do {
+    dateTime = NTPch.getNTPtime(5, 1);  
+  } while (!dateTime.valid);
   if(dateTime.valid){
     byte actualHour = dateTime.hour;
     byte actualMinute = dateTime.minute;
     int actualyear = dateTime.year;
     byte actualMonth = dateTime.month;
     byte actualday =dateTime.day;
+    if (actualday < 10) {
+      dataString += '0';
+    }
     dataString += String(actualday);
     dataString += "/";
+    if (actualMonth < 10) {
+      dataString += '0';
+    }
     dataString += String(actualMonth);
     dataString += "/";
     dataString += String(actualyear);
     dataString += "  ";
+    if (actualHour < 10) {
+      dataString += '0';
+    }
     dataString += String(actualHour);
     dataString += ":";
+    if (actualMinute < 10) {
+      dataString += '0';
+    }
     dataString += String(actualMinute);
     dataString += " Температура:";
     dataString += String(t);
@@ -204,10 +227,49 @@ String dataCreation(int t, int h) {
   return dataString;
 }
 
+
+String serverDataCreation(int t, int h) {
+  String dataString = "";
+  do {
+    dateTime = NTPch.getNTPtime(5, 1);  
+  } while (!dateTime.valid);
+  if(dateTime.valid){
+    byte actualHour = dateTime.hour;
+    byte actualMinute = dateTime.minute;
+    int actualyear = dateTime.year;
+    byte actualMonth = dateTime.month;
+    byte actualday =dateTime.day;
+    if (actualday < 10) {
+      dataString += '0';
+    }
+    dataString += String(actualday);
+    dataString += "/";
+    if (actualMonth < 10) {
+      dataString += '0';
+    }
+    dataString += String(actualMonth);
+    dataString += "/";
+    dataString += String(actualyear);
+    dataString += "  ";
+    if (actualHour < 10) {
+      dataString += '0';
+    }
+    dataString += String(actualHour);
+    dataString += ":";
+    if (actualMinute < 10) {
+      dataString += '0';
+    }
+    dataString += String(actualMinute);
+  }
+
+  return dataString;
+}
+
+
 void sdWriting(String dataString) {
   File humTemp = SD.open("humTemp.txt", FILE_WRITE);
   if (humTemp) {
-    Serial.println("Successfully opened SD");
+    Serial.println("SD opened");
       humTemp.println(dataString);
       humTemp.close();
   }
@@ -216,12 +278,17 @@ void sdWriting(String dataString) {
   }
 }
 
-void sendingToServer(int h, int t) {
+void sendingToServer(int h, int t, String serverData) {
   if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
+
+//    Serial.println("*Check serverData in function: ");
+//    Serial.print(serverData);
  
     DynamicJsonDocument doc(2048);
     doc["hum"] = h;
     doc["temp"] = t;
+    doc["sent_date"] = serverData;
+    doc["device_id"] = id;
 
     // Serialize JSON document
     String json;
@@ -234,6 +301,13 @@ void sendingToServer(int h, int t) {
     http.begin(client, ip); //"http://192.168.73.200:8090/api/v1/post2" address can be changed later
     http.addHeader("Content-Type","application/json");
     http.POST(json);
+
+    Serial.println("* serverData:");
+    Serial.println(h);
+    Serial.println(t);
+    Serial.println(serverData);
+    Serial.println(id);
+    Serial.println("* Sent to server.");
 
 // Read response
     Serial.print(http.getString());
